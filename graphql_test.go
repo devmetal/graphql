@@ -2,6 +2,7 @@ package graphql
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -41,7 +42,9 @@ func TestDo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		query := r.FormValue("query")
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"]
 		is.Equal(query, `query {}`)
 		io.WriteString(w, `{
 			"data": {
@@ -69,7 +72,9 @@ func TestDoErr(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		query := r.FormValue("query")
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"]
 		is.Equal(query, `query {}`)
 		io.WriteString(w, `{
 			"errors": [{
@@ -96,7 +101,9 @@ func TestDoNoResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		query := r.FormValue("query")
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"]
 		is.Equal(query, `query {}`)
 		io.WriteString(w, `{
 			"data": {
@@ -122,9 +129,11 @@ func TestQuery(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		query := r.FormValue("query")
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"]
 		is.Equal(query, "query {}")
-		is.Equal(r.FormValue("variables"), `{"username":"matryer"}`+"\n")
+		is.Equal(body["variables"], map[string]interface{}{"username": "matryer"})
 		_, err := io.WriteString(w, `{"data":{"value":"some data"}}`)
 		is.NoErr(err)
 	}))
@@ -150,35 +159,6 @@ func TestQuery(t *testing.T) {
 
 	is.Equal(resp.Value, "some data")
 
-}
-
-func TestFile(t *testing.T) {
-	is := is.New(t)
-
-	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		file, header, err := r.FormFile("file")
-		is.NoErr(err)
-		defer file.Close()
-		is.Equal(header.Filename, "filename.txt")
-
-		b, err := ioutil.ReadAll(file)
-		is.NoErr(err)
-		is.Equal(string(b), `This is a file`)
-
-		_, err = io.WriteString(w, `{"data":{"value":"some data"}}`)
-		is.NoErr(err)
-	}))
-	defer srv.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-	client := NewClient(srv.URL)
-	f := strings.NewReader(`This is a file`)
-	req := NewRequest("query {}")
-	req.File("file", "filename.txt", f)
-	err := client.Run(ctx, req, nil)
-	is.NoErr(err)
 }
 
 type roundTripperFunc func(req *http.Request) (*http.Response, error)

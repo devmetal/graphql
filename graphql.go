@@ -36,7 +36,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/textproto"
 
@@ -85,35 +84,22 @@ func (c *Client) Run(ctx context.Context, req *Request, resp interface{}) error 
 	default:
 	}
 	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	if err := writer.WriteField("query", req.q); err != nil {
-		return errors.Wrap(err, "write query field")
-	}
-	var variablesBuf bytes.Buffer
+
+	gQuery := make(map[string]interface{})
+	gQuery["query"] = req.q
 	if len(req.vars) > 0 {
-		variablesField, err := writer.CreateFormField("variables")
-		if err != nil {
-			return errors.Wrap(err, "create variables field")
-		}
-		if err := json.NewEncoder(io.MultiWriter(variablesField, &variablesBuf)).Encode(req.vars); err != nil {
-			return errors.Wrap(err, "encode variables")
-		}
+		gQuery["variables"] = req.vars
 	}
-	for i := range req.files {
-		part, err := writer.CreateFormFile(req.files[i].Field, req.files[i].Name)
-		if err != nil {
-			return errors.Wrap(err, "create form file")
-		}
-		if _, err := io.Copy(part, req.files[i].R); err != nil {
-			return errors.Wrap(err, "preparing file")
-		}
+
+	err := json.NewEncoder(&requestBody).Encode(gQuery)
+	if err != nil {
+		return err
 	}
-	if err := writer.Close(); err != nil {
-		return errors.Wrap(err, "close writer")
-	}
-	c.logf(">> variables: %s", variablesBuf.String())
-	c.logf(">> files: %d", len(req.files))
+
+	c.logf(">> variables: %s", req.vars)
 	c.logf(">> query: %s", req.q)
+	c.logf(">> requestBody %s", requestBody.String())
+
 	gr := &graphResponse{
 		Data: resp,
 	}
@@ -121,8 +107,7 @@ func (c *Client) Run(ctx context.Context, req *Request, resp interface{}) error 
 	if err != nil {
 		return err
 	}
-	r.Header.Set("Content-Type", writer.FormDataContentType())
-	r.Header.Set("Accept", "application/json")
+
 	for key, values := range req.Header {
 		for _, value := range values {
 			r.Header.Add(key, value)
