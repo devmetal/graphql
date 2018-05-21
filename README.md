@@ -1,4 +1,5 @@
 # devmatl/graphql
+[![Build Status](https://travis-ci.org/devmetal/graphql.svg?branch=master)](https://travis-ci.org/devmetal/graphql)
 
 ## This is a fork of a graphql client implementation
 
